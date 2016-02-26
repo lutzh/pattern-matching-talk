@@ -1,0 +1,573 @@
+\!
+| \gEverything You Always Wanted to Know About Pattern Matching* 
+| \g(*But Were Afraid to Ask)
+
+| @lutzhuehnken
+
+
+| Lightbend
+---
+| Pattern Matching
+
+```
+expr match {
+  case pattern1 => result1
+  case pattern2 => result2
+}
+```
+
+Differences to Java switch:
+* It’s an expression 
+* No fall-through
+* MatchError if there’s no match
+
+
+---
+
+
+```
+ case pattern => result
+
+```
+
+* case is followed by a pattern
+* pattern must be one of the legal pattern types
+* result is an arbitrary expression
+* if pattern matches, result will be evaluated and returned
+
+---
+
+```
+def matchAll(any: Any): String = any match {
+  case _ => "It’s a match!"
+}
+
+```
+Wildcard Pattern
+* _ matches anything
+* use as „default“ (remember MatchError)
+
+---
+
+```
+def isIt8(any: Any): String = any match {
+  case "8:00" => "Yes"
+  case 8 => "Yes"
+  case _ => "No"
+}
+```
+
+Constant Pattern
+
+---
+
+```
+def matchX(any: Any): String = any match {
+  case x => s"He said $x!"
+}
+```
+
+Variable Pattern 
+* identifier  - also matches anything!
+
+---
+
+Variables vs. Constants
+
+```
+object Patterns {
+  import math.Pi
+
+  val pi = Pi
+
+  def m1(x: Double) = x match {
+    case Pi => "Pi!"
+    case _ => "not Pi!"
+  }
+
+  def m2(x: Double) = x match {
+    case pi => "Pi!"
+    case _ => "not Pi!"
+  }
+}
+
+import Patterns._
+
+```
+
+
+---
+
+| Attention!
+
+* uppercase - compiler will assume it's constant
+
+* lowercase - compiler will assume it's a new 
+  identifier (local to the match expression)!
+
+| This is a very common source of errors!
+---
+
+
+Let's fix this!
+
+```
+  import math.Pi
+
+  val pi = Pi
+
+  def m3(x: Double) = x match {
+    case this.pi => "Pi!"
+    case _ => "not Pi!"
+  }
+
+  def m2(x: Double) = x match {
+    case `pi` => "Pi!"
+    case _ => "not Pi!"
+  }
+
+
+```
+
+---
+
+To refer to lowercase values
+
+* use qualified name (e.g. this.pi) or
+
+* use backticks (e.g. `pi`)
+
+---
+
+Constructor Pattern (Case Classes)
+
+```
+case class Time(hours: Int = 0, minutes: Int = 0)
+
+def mt(t: Time) = t match {
+	case Time(12,_) => "twelve something"
+	case _ => "not twelve"
+}
+```
+
+---
+
+Sequence Pattern
+
+```
+val l1 = List(1,2,3,4)
+val l2 = List(5)
+val l3 = List(5,8,6,4,9,12)
+
+def ml(l: List[Int]) = l match {
+  case List(1,_,_,_) => "starts with 1 and has 4 elements"
+  case List(5, _*) => "starts with 5"
+}
+```
+
+---
+Sequence Pattern (cont'd)
+
+```
+def contains5(l: List[Int]): String = l match {
+  case Nil => "No"
+  case 5 +: _ => "Yes"
+  case _ +: tail => contains5(tail)
+}
+```
+---
+Sequence Pattern (cont'd)
+
+```
+def contains5(l: List[Int]): String = l match {
+  case Nil => "No"
+  case 5 +: _ => "Yes"
+  case _ +: tail => contains5(tail)
+}
+```
+
+Quiz: What is "+:"?
+
+---
+It's an extractor!
+
+```
+/** An extractor used to head/tail deconstruct sequences. */
+object +: {
+  def unapply[T,Coll <: SeqLike[T, Coll]](
+      t: Coll with SeqLike[T, Coll]): Option[(T, Coll)] =
+    if(t.isEmpty) None
+    else Some(t.head -> t.tail)
+}
+```
+---
+Extractor
+
+* An extractor is a Scala object with an unapply() method.
+* Think unapply() is "dual" of apply()
+* unapply takes the value you match on as parameter (if the type matches)
+* return something (we'll look into that)
+* the returned is matched with your pattern
+---
+Extractor (cont'd)
+
+Let's write our own.
+
+```
+case class Time(hours: Int = 0, minutes: Int = 0)
+val (noon, morn, eve) = (Time(12), Time(9), Time(20))
+
+object AM {
+  def unapply(t: Time): Boolean = if (t.hours < 12) true else false
+}
+
+def isAM(t:Time) = t match {
+  case AM() => "Good Morning!"
+  case _ => "Good Afternoon!"
+}
+```
+
+---
+
+With variable binding.
+
+```
+
+object AM {
+  def unapply(t: Time): Option[(Int,Int)] = 
+    if (t.hours < 12) Some(t.hours -> t.minutes) else None
+}
+
+def isAM(t:Time) = t match {
+  case AM(h,m) => f"Good Morning, it's $h%02d:$m%02d!"
+  case _ => "Good Afternoon!"
+}
+```
+
+---
+Only hours... there's no 1-tuple...
+
+```
+
+object AM {
+  def unapply(t: Time) = if (t.hours < 12) Some(t.hours) else None
+}
+
+def isAM(t:Time) = t match {
+  case AM(h) => s"Good Morning, the hour is $h!"
+  case _ => "Good Afternoon!"
+}
+```
+
+---
+
+Types..
+
+```
+def isAM(t:Any) = t match {
+  case AM(h) => s"Good Morning, the hour is $h!"
+  case _: Time => "Good Afternoon!"
+}
+```
+---
+
+Extractors
+
+* What goes in?
+--
+* Your match value
+--
+* Where is it defined?
+--
+* unapply() in your extractor object
+--
+* what is returned?
+--
+* No variables: Boolean
+--
+* One variable: Option[A]
+--
+* N variables: Option[TupleN[..]]
+--
+* Or ...?
+---
+Say, I don't want to allocate an Option every time I match
+```
+object AM {
+  def unapply(t: Time): Time = t 
+}
+
+def isAM(t:Time) = t match {
+  case AM(h,m) => f"Good Morning, it's $h%02d:$m%02d!"
+  case _ => "Good Afternoon!"
+}
+```
+---
+Hm.. let's just define one...
+
+```
+case class Time(hours: Int = 0, minutes: Int = 0) {
+  def isEmpty = false
+}
+
+object AM {
+  def unapply(t: Time): Time = t 
+}
+
+def isAM(t:Time) = t match {
+  case AM(h,m) => f"Good Morning, it's $h%02d:$m%02d!"
+  case _ => "Good Afternoon!"
+}
+```
+---
+This ones not so clear from the error message, 
+you'll just have to believe me..
+
+```
+case class Time(hours: Int = 0, minutes: Int = 0) {
+  def isEmpty = false
+  def get = this
+  def _1 = hours
+  def _2 = minutes
+}
+
+object AM {
+  def unapply(t: Time): Time = t 
+}
+
+def isAM(t:Time) = t match {
+  case AM(h,m) => f"Good Morning, it's $h%02d:$m%02d!"
+  case _ => "Good Afternoon!"
+}
+```
+---
+```
+case class Time(hours: Int = 0, minutes: Int = 0) {
+  def isEmpty = false
+  def get = this
+  def _1 = hours
+  def _2 = minutes
+}
+
+val noTime = new Time { override def isEmpty = true }
+
+object AM {
+  def unapply(t: Time): Time = if (t.hours < 12 ) t else noTime
+}
+
+def isAM(t:Time) = t match {
+  case AM(h,m) => f"Good Morning, it's $h%02d:$m%02d!"
+  case _ => "Good Afternoon!"
+}
+```
+
+---
+
+* This concept is called name based extractors
+* It was introduced in Scala 2.11
+* It's an optimization, it might not make your code more readable
+* Remember: Premature optimization is the root of all evil!
+
+---
+Do's and don'ts
+
+```
+def contains5(l: Seq[Int]): String = l match {
+  case Nil => "No"
+  case 5 :: _ => "Yes"
+  case _ :: tail => contains5(tail)
+}
+```
+
+Quiz: What's wrong with this?
+
+---
+Do's and don'ts
+
+* :: takes an element and a List
+* +: takes an element and a Seq
+
+* :: may look prettier than +:, but you might want to
+  play it safe and use +: just in case.
+
+* by the way, what about :+ ?
+
+---
+
+Do's and don'ts
+
+```
+def contains5(l: List[Int]): String = l match {
+  case Nil => "No"
+  case _ :+ 5 => "Yes"
+  case init :+ _ => contains5(init)
+}
+```
+
+Although that may work, it may be very inefficient.
+
+---
+
+The Decision Tree
+
+```
+def isItEfficient(x: Any): String = x match {
+  case Time(h,m) if h < 12 => "It's AM"
+  case Time(h,m) => "It's some time"
+  case _ => "undefined"
+}
+```
+
+---
+
+$ scala -Xshow-phases
+    phase name  id  description
+    ----------  --  -----------
+        parser   1  parse source into ASTs, perform simple desugaring
+         namer   2  resolve names, attach symbols to named trees
+packageobjects   3  load package objects
+         typer   4  the meat and potatoes: type the trees
+\c        patmat   5  translate match expressions
+superaccessors   6  add super accessors in traits and nested classes
+    extmethods   7  add extension methods for inline classes
+       pickler   8  serialize symbol tables
+     refchecks   9  reference/override checking, translate nested objects
+       uncurry  10  uncurry, translate function values to anonymous classes
+     tailcalls  11  replace tail calls by jumps
+     ... and so on until 25
+
+
+---
+
+$ scala -Xprint:patmat
+
+* It's not super readable
+* But if you know what you look for, 
+  you might find it.
+* Play around with printing other phases, too!
+
+---
+
+Case classes
+
+* While we still have the output on, let's check..
+
+```
+case class T2(p1 : Int, p2: Int)
+
+case class T23(p1 : Int, p2: Int, p3: Int, p4: Int, p5: Int,
+  p6: Int, p7: Int, p8: Int, p9: Int, p10: Int,
+  p11: Int, p12: Int, p13: Int, p14: Int, 
+  p15: Int, p16: Int, p17: Int, p18: Int, 
+  p19: Int, p20: Int, p21 : Int, p22: Int, p23: Int)
+```
+
+---
+
+```
+val t2 = T2(1,2)
+val t23 = T23(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23)
+
+def m(x: Any) = x match {
+  case T2(_,_) => "T2"
+  case T23(1,2,3,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_) 
+    => "What? How did this work?"
+  case _ => "undefined"
+}
+
+---
+
+Case Classes
+
+* For case classes, the unapply() method is not used!
+* Positive side effect: You can pattern match 
+  on case classes with > 22 fields.
+
+---
+
+Still more on extractors..
+
+What if you don't know the number of variables?
+
+Example: Regular Expressions
+
+---
+
+Bad example, need another one...
+
+```
+val pattern = "a(b*)(c+)".r
+val s1 = "abbbcc"
+val s2 = "acc"
+val s3 = "abb"
+
+def mr(s: String) = s match {
+  case pattern(a, bs) => s"""two groups "$a" "$bs""""
+  case pattern(a, bs, cs) => s"""three groups "$a" "$bs" "$cs""""
+  case _  => "no match"
+}
+
+```
+
+---
+
+Another example..
+
+```
+s1 = "lightbend.com"
+s2 = "www.scala-lang.org"
+
+object Domain {
+	def unapply(s: String) = Some(s.split("\\.").reverse)
+}
+
+def md(s: String) = s match {
+	case Domain("com", _*) => "business"
+	case Domain("org", _*) => "non-profit"
+}
+
+```
+
+---
+
+Secret sauce: unapplySeq
+
+* Let's you return variable number of values
+* Think dual apply with varargs
+* Also: Some values and then sequence
+* apply where last argument is varargs
+
+
+---
+
+@switch annotation
+
+---
+
+
+Pattern matching and type erasure w.i.p.
+
+
+```
+import scala.reflect.runtime.universe._
+def print[A: TypeTag](xs: List[A]) = xs match {
+  case _: List[String] => "list of strings"
+  case _: List[Int] => "list of ints"
+}
+```
+
+---
+
+TypeTag to the rescue w.i.p.
+
+
+```
+import scala.reflect.runtime.universe._
+def print[A: TypeTag](xs: List[A]) = typeOf[A] match {
+  case t if t =:= typeOf[String] => "list of strings"
+  case t if t =:= typeOf[Int]    => "list of ints"
+} 
+```
+
+
+
