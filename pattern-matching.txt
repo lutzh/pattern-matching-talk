@@ -547,6 +547,24 @@ Secret sauce: unapplySeq
 * Also: Some values and then sequence
 * apply where last argument is varargs
 
+---
+
+By the way, scala.util.matching.Regex provides an unapplySeq method
+
+```
+val pattern = "a(b*)(c+)".r
+val s1 = "abbbcc"
+val s2 = "acc"
+val s3 = "abb"
+
+def mr(s: String) = s match {
+  case pattern(a, bs) => s"""two groups "$a" "$bs""""
+  case pattern(a, bs, cs) => s"""three groups "$a" "$bs" "$cs""""
+  case _  => "no match"
+}
+
+```
+
 
 ---
 
