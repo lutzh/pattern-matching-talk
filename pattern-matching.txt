@@ -75,7 +75,6 @@ Variable Pattern 
 Variables vs. Constants
 
 ```
-object Patterns {
   import math.Pi
 
   val pi = Pi
@@ -89,9 +88,6 @@ object Patterns {
     case pi => "Pi!"
     case _ => "not Pi!"
   }
-}
-
-import Patterns._
 
 ```
 
@@ -121,7 +117,7 @@ Let's fix this!
     case _ => "not Pi!"
   }
 
-  def m2(x: Double) = x match {
+  def m4(x: Double) = x match {
     case `pi` => "Pi!"
     case _ => "not Pi!"
   }
@@ -143,10 +139,29 @@ Constructor Pattern (Case Classes)
 
 ```
 case class Time(hours: Int = 0, minutes: Int = 0)
+val (noon, morn, eve) = (Time(12), Time(9), Time(20))
 
 def mt(t: Time) = t match {
-	case Time(12,_) => "twelve something"
-	case _ => "not twelve"
+  case Time(12,_) => "twelve something"
+  case _ => "not twelve"
+}
+```
+
+---
+
+Nest it like crazy
+
+```
+case class House(street: String, number: Int)
+case class Address(city: String, house: House)
+case class Person(name: String, age: Int, address: Address)
+
+val peter = Person("Peter", 33, Address("Hamburg", House("Reeperbahn", 45)))
+val paul = Person("Paul", 29, Address("Berlin", House("Oranienstrasse", 64)))
+
+def m45(p: Person) = p match {
+  case Person(_, _, Address(_, House(_, 45))) => "Must be Peter!"
+  case Person(_, _, Address(_, House(_, _))) => "Someone else"
 }
 ```
 
@@ -169,6 +184,9 @@ def ml(l: List[Int]) = l match {
 Sequence Pattern (cont'd)
 
 ```
+import annotation._
+
+@tailrec
 def contains5(l: List[Int]): String = l match {
   case Nil => "No"
   case 5 +: _ => "Yes"
@@ -179,6 +197,7 @@ def contains5(l: List[Int]): String = l match {
 Sequence Pattern (cont'd)
 
 ```
+@tailrec
 def contains5(l: List[Int]): String = l match {
   case Nil => "No"
   case 5 +: _ => "Yes"
@@ -189,13 +208,14 @@ def contains5(l: List[Int]): String = l match {
 Quiz: What is "+:"?
 
 ---
-It's an extractor!
+It's an extractor! 
+You can navigate to the source code in your IDE.
+Slightly simplified:
 
 ```
 /** An extractor used to head/tail deconstruct sequences. */
 object +: {
-  def unapply[T,Coll <: SeqLike[T, Coll]](
-      t: Coll with SeqLike[T, Coll]): Option[(T, Coll)] =
+  def unapply[A](t: Seq[A]): Option[(A, Seq[A])] =
     if(t.isEmpty) None
     else Some(t.head -> t.tail)
 }
@@ -221,7 +241,7 @@ object AM {
   def unapply(t: Time): Boolean = if (t.hours < 12) true else false
 }
 
-def isAM(t:Time) = t match {
+def greet(t:Time) = t match {
   case AM() => "Good Morning!"
   case _ => "Good Afternoon!"
 }
@@ -238,22 +258,65 @@ object AM {
     if (t.hours < 12) Some(t.hours -> t.minutes) else None
 }
 
-def isAM(t:Time) = t match {
+def greet(t:Time) = t match {
   case AM(h,m) => f"Good Morning, it's $h%02d:$m%02d!"
   case _ => "Good Afternoon!"
 }
 ```
 
 ---
-Only hours... there's no 1-tuple...
+
+Just for demo purposes:
+if we return a pair, we can write the extractor inline..
 
 ```
+
+object AM {
+  def unapply(t: Time): Option[(Int,Int)] = 
+    if (t.hours < 12) Some(t.hours -> t.minutes) else None
+}
+
+def greet(t:Time) = t match {
+  case _ AM _ => "Good Morning!"
+  case _ => "Good Afternoon!"
+}
+```
+
+---
+
+In case you still have doubts..
+
+```
+import annotation._ 
+
+val l1 = List(1,2,3,4)
+val l2 = List(5)
+val l3 = List(5,8,6,4,9,12)
+
+@tailrec
+def contains5(l: List[Int]): String = l match {
+  case Nil => "No"
+  case +:(5, _) => "Yes"
+  case +:(_, tail) => contains5(tail)
+}
+```
+
+Mystery of +: solved completely.
+
+---
+* yes/no - return Boolean
+* 2 or more variables - return Option[TupleN[..]]
+* 1 variable? There's no 1-tuple...
+
+```
+case class Time(hours: Int = 0, minutes: Int = 0)
+val (noon, morn, eve) = (Time(12), Time(9), Time(20))
 
 object AM {
   def unapply(t: Time) = if (t.hours < 12) Some(t.hours) else None
 }
 
-def isAM(t:Time) = t match {
+def greet(t:Time) = t match {
   case AM(h) => s"Good Morning, the hour is $h!"
   case _ => "Good Afternoon!"
 }
@@ -264,7 +327,7 @@ def isAM(t:Time) = t match {
 Types..
 
 ```
-def isAM(t:Any) = t match {
+def greet(t:Any) = t match {
   case AM(h) => s"Good Morning, the hour is $h!"
   case _: Time => "Good Afternoon!"
 }
@@ -276,71 +339,22 @@ Extractors
 * What goes in?
 --
 * Your match value
---
 * Where is it defined?
 --
 * unapply() in your extractor object
---
 * what is returned?
 --
 * No variables: Boolean
---
 * One variable: Option[A]
---
 * N variables: Option[TupleN[..]]
 --
-* Or ...?
+* It gets even better!
+
 ---
-Say, I don't want to allocate an Option every time I match
-```
-object AM {
-  def unapply(t: Time): Time = t 
-}
 
-def isAM(t:Time) = t match {
-  case AM(h,m) => f"Good Morning, it's $h%02d:$m%02d!"
-  case _ => "Good Afternoon!"
-}
-```
----
-Hm.. let's just define one...
+Say, I don't want to allocate an Option & Tuple every time I match.
+Let's just "pretend" we are an Option[TupleN[..]]
 
-```
-case class Time(hours: Int = 0, minutes: Int = 0) {
-  def isEmpty = false
-}
-
-object AM {
-  def unapply(t: Time): Time = t 
-}
-
-def isAM(t:Time) = t match {
-  case AM(h,m) => f"Good Morning, it's $h%02d:$m%02d!"
-  case _ => "Good Afternoon!"
-}
-```
----
-This ones not so clear from the error message, 
-you'll just have to believe me..
-
-```
-case class Time(hours: Int = 0, minutes: Int = 0) {
-  def isEmpty = false
-  def get = this
-  def _1 = hours
-  def _2 = minutes
-}
-
-object AM {
-  def unapply(t: Time): Time = t 
-}
-
-def isAM(t:Time) = t match {
-  case AM(h,m) => f"Good Morning, it's $h%02d:$m%02d!"
-  case _ => "Good Afternoon!"
-}
-```
----
 ```
 case class Time(hours: Int = 0, minutes: Int = 0) {
   def isEmpty = false
@@ -372,6 +386,8 @@ def isAM(t:Time) = t match {
 Do's and don'ts
 
 ```
+import collection.immutable.Seq
+
 def contains5(l: Seq[Int]): String = l match {
   case Nil => "No"
   case 5 :: _ => "Yes"
@@ -382,6 +398,19 @@ def contains5(l: Seq[Int]): String = l match {
 Quiz: What's wrong with this?
 
 ---
+
+:: is a case class, the second class parameter is a List.
+You can navigate to the source code in your IDE.
+Slightly simplified:
+
+```
+case class ::[B](head: B, tl: List[B]) extends List[B] {
+  override def tail : List[B] = tl
+  override def isEmpty: Boolean = false
+}
+```
+---
+
 Do's and don'ts
 
 * :: takes an element and a List
@@ -408,12 +437,12 @@ Although that may work, it may be very inefficient.
 
 ---
 
-The Decision Tree
+Getting deep insights..
 
 ```
-def isItEfficient(x: Any): String = x match {
-  case Time(h,m) if h < 12 => "It's AM"
-  case Time(h,m) => "It's some time"
+def checkTwice(x: Any): String = x match {
+  case AM(h,m) if h < 11 => "Too late for breakfast"
+  case AM(h,m) if h < 7 => "Too early"
   case _ => "undefined"
 }
 ```
@@ -489,36 +518,17 @@ Still more on extractors..
 
 What if you don't know the number of variables?
 
-Example: Regular Expressions
 
 ---
 
-Bad example, need another one...
+Example..
 
 ```
-val pattern = "a(b*)(c+)".r
-val s1 = "abbbcc"
-val s2 = "acc"
-val s3 = "abb"
-
-def mr(s: String) = s match {
-  case pattern(a, bs) => s"""two groups "$a" "$bs""""
-  case pattern(a, bs, cs) => s"""three groups "$a" "$bs" "$cs""""
-  case _  => "no match"
-}
-
-```
-
----
-
-Another example..
-
-```
-s1 = "lightbend.com"
-s2 = "www.scala-lang.org"
+val s1 = "lightbend.com"
+val s2 = "www.scala-lang.org"
 
 object Domain {
-	def unapply(s: String) = Some(s.split("\\.").reverse)
+	def unapplySeq(s: String) = Some(s.split("\\.").reverse)
 }
 
 def md(s: String) = s match {
@@ -542,15 +552,69 @@ Secret sauce: unapplySeq
 
 @switch annotation
 
+```
+import annotation._ 
+
+def wsw(x: Int): String = (x: @switch) match {
+  case 8 => "Yes"
+  case 9 => "No"
+  case 10 => "No"
+}
+```
 ---
 
-
-Pattern matching and type erasure w.i.p.
-
+@switch annotation (cont'd)
 
 ```
-import scala.reflect.runtime.universe._
-def print[A: TypeTag](xs: List[A]) = xs match {
+import annotation._ 
+
+def wsw(x: Any): String = (x: @switch) match {
+  case 8 => "Yes"
+  case "9" => "No"
+  case "10" => "No"
+}
+```
+
+Would give a warning (outside of presentation)
+
+---
+
+@switch annotation (cont'd)
+
+Verifies that the match expression can be compiled 
+to a tableswitch or lookupswitch 
+and issues an error if it instead compiles 
+into a series of conditional expressions.
+
+---
+
+@switch annotation
+
+```
+import annotation._ 
+
+def wsw(x: Int): String = (x: @switch) match {
+  case 8 => "Yes"
+  case 9 => "No"
+  case 10 => "No"
+}
+
+
+def wosw(x: Int): String = x match {
+  case 8 => "Yes"
+  case 9 => "No"
+  case 10 => "No"
+}
+
+```
+
+---
+
+Pattern matching and type erasure
+
+```
+
+def print[A](xs: List[A]) = xs match {
   case _: List[String] => "list of strings"
   case _: List[Int] => "list of ints"
 }
@@ -558,16 +622,62 @@ def print[A: TypeTag](xs: List[A]) = xs match {
 
 ---
 
-TypeTag to the rescue w.i.p.
-
+Pattern matching and type erasure (cont'd)
 
 ```
-import scala.reflect.runtime.universe._
-def print[A: TypeTag](xs: List[A]) = typeOf[A] match {
-  case t if t =:= typeOf[String] => "list of strings"
-  case t if t =:= typeOf[Int]    => "list of ints"
-} 
+import scala.reflect._
+def print[A: ClassTag](xs: List[A]) = classTag[A].runtimeClass match {
+  case c if c == classOf[String] => "List of strings"
+  case c if c == classOf[Int]    => "List of ints"
+}
+
+```
+---
+
+Match by type
+```
+def t(x:Any) = x match {
+  case _ : Int => "Integer"
+  case _ : String => "String"
+}
 ```
 
+---
+
+Match alternatives
+
+```
+def alt(x:Any) = x match {
+  case 1 | 2 | 3 | 4 | 5 | 6 => "little"
+  case 100 | 200 => "big"
+}
+```
+
+---
+
+Simulating union types?
+
+```
+
+def talt(x:Any) = x match {
+  case stringOrInt @ (_ : Int | _ : String) => 
+    s"Union String | Int: $stringOrInt"
+  case _ => "unknown"
+}
+```
+
+--
+* Unfortunately the compile time type of stringOrInt is Any
+* No union types in Scala (yet ;)
 
 
+---
+
+
+\!
+| \gThank You!
+
+| @lutzhuehnken
+
+
+| Lightbend
