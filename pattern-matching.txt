@@ -238,10 +238,10 @@ case class Time(hours: Int = 0, minutes: Int = 0)
 val (noon, morn, eve) = (Time(12), Time(9), Time(20))
 
 object AM {
-  def unapply(t: Time): Boolean = if (t.hours < 12) true else false
+  def unapply(t: Time): Boolean = t.hours < 12
 }
 
-def greet(t:Time) = t match {
+def greet(t:Any) = t match {
   case AM() => "Good Morning!"
   case _ => "Good Afternoon!"
 }
@@ -301,7 +301,7 @@ def contains5(l: List[Int]): String = l match {
 }
 ```
 
-Mystery of +: solved completely.
+Mystery of +: solved completely. It's simple ;)
 
 ---
 * yes/no - return Boolean
@@ -440,10 +440,13 @@ Although that may work, it may be very inefficient.
 Getting deep insights..
 
 ```
+case class Time(hours: Int = 0, minutes: Int = 0)
+val (noon, morn, eve) = (Time(12), Time(9), Time(20))
+
 def checkTwice(x: Any): String = x match {
-  case AM(h,m) if h < 11 => "Too late for breakfast"
-  case AM(h,m) if h < 7 => "Too early"
-  case _ => "undefined"
+  case Time(h,m) if h > 11 => "Too late for breakfast"
+  case Time(h,m) if h < 7 => "Too early"
+  case _ => "undefined is not a function"
 }
 ```
 
@@ -497,11 +500,13 @@ case class T23(p1 : Int, p2: Int, p3: Int, p4: Int, p5: Int,
 val t2 = T2(1,2)
 val t23 = T23(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23)
 
+case class T2(p1 : Int, p2: Int)
+
 def m(x: Any) = x match {
   case T2(_,_) => "T2"
   case T23(1,2,3,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_,_) 
     => "What? How did this work?"
-  case _ => "undefined"
+  case _ => "undefined is not a function"
 }
 
 ---
@@ -565,6 +570,36 @@ def mr(s: String) = s match {
 
 ```
 
+---
+
+By the way, you can also use a string interpolator!
+
+Define a "t" interpolator ..
+
+```
+implicit class TimeStringContext (val sc : StringContext) {
+  object t {
+    def apply (args : Any*) : String = sc.s (args : _*)
+
+    def unapplySeq (s : String) : Option[Seq[Int]] = {
+      val regexp = """(\d{1,2}):(\d{1,2})""".r
+      regexp.unapplySeq(s).map(_.map(s => s.toInt))
+    }
+  }
+}
+```
+
+---
+
+.. and use it in pattern match!
+
+
+```
+def isTime(s: String) = s match {
+  case t"$hours:$minutes" => Time(hours, minutes)
+  case _ => "Not a time!"
+}
+```
 
 ---
 
@@ -611,7 +646,7 @@ into a series of conditional expressions.
 ```
 import annotation._ 
 
-def wsw(x: Int): String = (x: @switch) match {
+def wsw(x: Any): String = (x: @switch) match {
   case 8 => "Yes"
   case 9 => "No"
   case 10 => "No"
